@@ -6,6 +6,7 @@ import binascii
 import hashlib
 import argparse
 import ssdeep
+import textwrap
 from argparse import ArgumentParser
 
 
@@ -34,7 +35,35 @@ class ripPE(object):
 	def list_standard(self):
 		print "%s,file_md5,file_header,%s" % (self._filename,self._md5)
 		print "%s,file_ssdeep,file_header,%s" % (self._filename,self._ssdeep)
-		print "%s,timedatestamp,file_header,%s" % (self._filename,self._pe_compile)	
+		print "%s,timedatestamp,file_header,%s" % (self._filename,self._pe_compile)
+	
+		version_cat = []
+		version_value = []
+		version_both = []
+		version_list=[]
+
+		for key,value in self._pe.FileInfo[0].StringTable[0].entries.items():
+			version_cat.append(key)
+			version_value.append(value)
+			version_both.append(key + ": " + value)
+			print "%s,version_info,file_header_category,%s" % (self._filename,key)
+			print "%s,version_info,file_header_value,%s" % (self._filename,value)
+			print "%s,version_info,file_header_complete,%s: %s" % (self._filename,key,value)
+		
+		version_list.append(version_cat)
+		version_list.append(version_value)
+		version_list.append(version_both)
+
+		version_cat_str = "\n".join(version_list[0])
+		version_value_str = "\n".join(version_list[1])
+		version_both_str = "\n".join(version_list[2])
+		
+		print "%s,version_category_md5,file_header_category,%s" % (self._filename,hashlib.md5(version_cat_str.encode('utf-8').strip()).hexdigest())
+		print "%s,version_category_ssdeep,file_header_category,%s" % (self._filename,ssdeep.hash(version_cat_str.encode('utf-8').strip()))
+		print "%s,version_value_md5,file_header_value,%s" % (self._filename,hashlib.md5(version_value_str.encode('utf-8').strip()).hexdigest())
+		print "%s,version_category_ssdeep,file_header_value,%s" % (self._filename,ssdeep.hash(version_value_str.encode('utf-8').strip()))
+		print "%s,version_version_md5,file_header_version,%s" % (self._filename,hashlib.md5(version_both_str.encode('utf-8').strip()).hexdigest())
+		print "%s,version_version_ssdeep,file_header_value,%s" % (self._filename,ssdeep.hash(version_both_str.encode('utf-8').strip()))
 
 	def dump_import(self):
 		if not hasattr(self._pe, 'DIRECTORY_ENTRY_IMPORT'):
@@ -171,18 +200,16 @@ class ripPE(object):
 									resource_dump=open("ripPE-" + name + "-" + resource_md5 + ".rsrc","wb+")
 									resource_dump.write(data)
 									resource_dump.close()
-								print "%s,resource_md5,ENTRY_RESOURCE-%s-%s,%s" % (self._filename,name,lang,resource_md5)
-								print "%s,resource_ssdeep,ENTRY_RESOURCE-%s-%s,%s" % (self._filename,name,lang,resource_ssdeep)
+								print "%s,resource_md5,RESOURCE-%s,%s" % (self._filename,name,resource_md5)
+								print "%s,resource_ssdeep,RESOURCE-%s,%s" % (self._filename,name,resource_ssdeep)
 	
 	def dump_cert(self):
-		der=""
 		for idx in xrange(len(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY)):
 			if self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].name == 'IMAGE_DIRECTORY_ENTRY_SECURITY':
 				address=self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].VirtualAddress
 				signature=self._pe.write()[address+8:] #::Thanks Didier Stevens!!
 				cert_md5=hashlib.md5(signature).hexdigest()
 				cert_ssdeep=ssdeep.hash(signature)
-				der=signature
 				if self._dump_mode == True:
 					hash_dump=open("ripPE-CERT-" + cert_md5 + ".crt","wb+")
 					hash_dump.write(signature)
@@ -190,14 +217,11 @@ class ripPE(object):
 				print "%s,certificate_md5,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,cert_md5)
 				print "%s,certificate_ssdeep,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,cert_ssdeep)
 
-			
-						
-							
 def main():
 
 	p = ArgumentParser(description='ripPE.py - script used to rip raw structures from a PE file and list relevant characteristics.',usage='ripPE.py --file=[file] --dump')
 	p.add_argument('--file',action='store',dest='ripFile',help='File to Parse',required=True)
-	p.add_argument('--section',action='store',dest='ripSection',choices=['all','header','iat','imports','exports','debug','sections','resources','dump_cert'],default='all',help='Section to rip!',required=True)
+	p.add_argument('--section',action='store',dest='ripSection',choices=['all','header','iat','imports','exports','debug','sections','resources','dump_cert'],default='all',help='Section to rip!',required=False)
 	p.add_argument('--dump',action='store_true',default=False,dest='dump_mode',help='Dump raw data to file - when not provided only metadata printed to stdout',required=False)							
 	args = p.parse_args(sys.argv[1:])	
 	
