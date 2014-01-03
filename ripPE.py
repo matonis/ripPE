@@ -73,7 +73,7 @@ class ripPE(object):
 			print "%s,%s,version_version_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_both_str.encode('utf-8').strip()))
 
 	def dump_dos(self):
-		#::Dancing with myself, oh, oh!::#
+		#::TODO: LIST OUT DOS HEADER PARAMETERS + IMAGE TYPE::#
 		if hasattr(self._pe, 'IMAGE_SECTION_HEADER'):
 			print dir(self._pe.IMAGE_SECTION_HEADER)
 	
@@ -111,6 +111,7 @@ class ripPE(object):
 
 	def list_imports(self):
 		#::Bound Imports::#
+		#::TODO: FIX THIS::#
 		if hasattr(self._pe, 'DIRECTORY_ENTRY_BOUND_IMPORT'):
 			for entry in self._pe.DIRECTORY_ENTRY_BOUND_IMPORT:
 				for imports in entry.entries:
