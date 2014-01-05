@@ -7,15 +7,25 @@ import hashlib
 import argparse
 import ssdeep
 import textwrap
+import time
+import sqlite3
 from argparse import ArgumentParser
 
 
 class ripPE(object):
 
-	def __init__(self,file_to_rip,dump_mode=False):
+	def __init__(self,file_to_rip,dump_mode=False,into_db=False,session=False):
+		
+		self._date = time.time()
 		self._md5 = hashlib.md5(open(file_to_rip).read()).hexdigest()
 		self._dump_mode = dump_mode
 		self._filename = os.path.basename(file_to_rip)
+		
+		if session == False:
+			self._session="ripPE-" + str(self._date)
+		else:
+			self._session = session
+
 		try:
 			self._pe = pefile.PE(file_to_rip)
 		except:
@@ -25,7 +35,57 @@ class ripPE(object):
 		#::Begin static stuff::#
 		self._pe_compile = self._pe.FILE_HEADER.TimeDateStamp
 		self._ssdeep = ssdeep.hash_from_file(file_to_rip)
+		self._into_db = into_db
+		self._dbcon = False
+		self._query = False
 
+		if self._into_db:
+		#::Check if DB exists::#
+			#::Save shit in a local folder so you don't accidentally rm -rf the DB::#
+			if not (os.path.isdir("./dbripPE")):
+				os.mkdir("./dbripPE")
+
+			#::Does DB exist::#
+			if os.path.isfile("./dbripPE/ripPE.db") == False:
+				#open('dbripPE/ripPE.db')
+				self._dbcon=sqlite3.connect('./dbripPE/ripPE.db')
+				self._dbcon.execute('''CREATE TABLE ripPE (
+									session VARCHAR(255) NOT NULL,
+									date INT NOT NULL,
+									file_name VARCHAR(255) NOT NULL,
+									file_md5 VARCHAR(255) NOT NULL,
+									section_type VARCHAR(255) NOT NULL,
+									section_sub VARCHAR(255) NOT NULL,
+									value VARCHAR(255))''')
+				self._dbcon.commit()
+
+			else:
+				self._dbcon=sqlite3.connect('./dbripPE/ripPE.db')
+
+			#::Dear MySQL, I miss you...::#		
+			#self._db = MySQLdb.connect(host="localhost",user="root",db="ripPE")
+			#self._query = self._db.cursor()
+	
+	def db_close(self):
+		self._dbcon.close()
+
+	def output_handle(self,strOutput):
+		print strOutput
+		if self._into_db:
+			#try:
+			insVal = strOutput.split(',')
+				#::prepend identifiers::#
+			insVal.insert(0,self._date)
+			insVal.insert(0,self._session)
+				
+			insertStatement = "INSERT INTO ripPE VALUES ( ?, ?, ?, ?, ?, ?, ?)"
+			self._dbcon.execute(insertStatement, (insVal))
+			self._dbcon.commit()
+
+			#except:
+			#	print "Couldn't insert into DB...exiting."
+			#	sys.exit(0)
+			
 	def run_all(self):
 		self.list_standard()
 		self.dump_iat()
@@ -39,9 +99,9 @@ class ripPE(object):
 
 	def list_standard(self):
 
-		print "%s,%s,file_md5,file_md5,%s" % (self._filename,self._md5,self._md5)
-		print "%s,%s,file_ssdeep,file_header,%s" % (self._filename,self._md5,self._ssdeep)
-		print "%s,%s,timedatestamp,file_header,%s" % (self._filename,self._md5,self._pe_compile)
+		self.output_handle("%s,%s,file_md5,file_md5,%s" % (self._filename,self._md5,self._md5))
+		self.output_handle("%s,%s,file_ssdeep,file_header,%s" % (self._filename,self._md5,self._ssdeep))
+		self.output_handle("%s,%s,timedatestamp,file_header,%s" % (self._filename,self._md5,self._pe_compile))
 	
 		version_cat = []
 		version_value = []
@@ -53,9 +113,9 @@ class ripPE(object):
 				version_cat.append(key)
 				version_value.append(value)
 				version_both.append(key + ": " + value)
-				print "%s,%s,version_info,file_header_category,%s" % (self._filename,self._md5,key.encode('utf-8').strip())
-				print "%s,%s,version_info,file_header_value,%s" % (self._filename,self._md5,value.encode('utf-8').strip())
-				print "%s,%s,version_info,file_header_complete,%s: %s" % (self._filename,self._md5,key,value.encode('utf-8').strip())
+				self.output_handle("%s,%s,version_info,file_header_category,%s" % (self._filename,self._md5,key.encode('utf-8').strip()))
+				self.output_handle("%s,%s,version_info,file_header_value,%s" % (self._filename,self._md5,value.encode('utf-8').strip()))
+				self.output_handle("%s,%s,version_info,file_header_complete,%s: %s" % (self._filename,self._md5,key,value.encode('utf-8').strip()))
 		
 			version_list.append(version_cat)
 			version_list.append(version_value)
@@ -65,12 +125,12 @@ class ripPE(object):
 			version_value_str = "\n".join(version_list[1])
 			version_both_str = "\n".join(version_list[2])
 		
-			print "%s,%s,version_category_md5,file_header_category,%s" % (self._filename,self._md5,hashlib.md5(version_cat_str.encode('utf-8').strip()).hexdigest())
-			print "%s,%s,version_category_ssdeep,file_header_category,%s" % (self._filename,self._md5,ssdeep.hash(version_cat_str.encode('utf-8').strip()))
-			print "%s,%s,version_value_md5,file_header_value,%s" % (self._filename,self._md5,hashlib.md5(version_value_str.encode('utf-8').strip()).hexdigest())
-			print "%s,%s,version_category_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_value_str.encode('utf-8').strip()))
-			print "%s,%s,version_version_md5,file_header_version,%s" % (self._filename,self._md5,hashlib.md5(version_both_str.encode('utf-8').strip()).hexdigest())
-			print "%s,%s,version_version_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_both_str.encode('utf-8').strip()))
+			self.output_handle("%s,%s,version_category_md5,file_header_category,%s" % (self._filename,self._md5,hashlib.md5(version_cat_str.encode('utf-8').strip()).hexdigest()))
+			self.output_handle("%s,%s,version_category_ssdeep,file_header_category,%s" % (self._filename,self._md5,ssdeep.hash(version_cat_str.encode('utf-8').strip())))
+			self.output_handle("%s,%s,version_value_md5,file_header_value,%s" % (self._filename,self._md5,hashlib.md5(version_value_str.encode('utf-8').strip()).hexdigest()))
+			self.output_handle("%s,%s,version_category_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_value_str.encode('utf-8').strip())))
+			self.output_handle("%s,%s,version_version_md5,file_header_version,%s" % (self._filename,self._md5,hashlib.md5(version_both_str.encode('utf-8').strip()).hexdigest()))
+			self.output_handle("%s,%s,version_version_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_both_str.encode('utf-8').strip())))
 
 	def dump_dos(self):
 		#::TODO: LIST OUT DOS HEADER PARAMETERS + IMAGE TYPE::#
@@ -91,12 +151,11 @@ class ripPE(object):
 					write_iat=open("ripPE-IMPORT-" + self._md5 + "-" + struct_md5 + "-.import","wb+")
 					write_iat.write(data)
 					write_iat.close()
-				print "%s,%s,import_md5,IMAGE_DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,struct_md5)
-				print "%s,%s,import_ssdeep,IMAGE_DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,struct_ssdeep)
+				self.output_handle("%s,%s,import_md5,IMAGE_DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,struct_md5))
+				self.output_handle("%s,%s,import_ssdeep,IMAGE_DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,struct_ssdeep))
 	
 	def dump_iat(self):
-		if not hasattr(self._pe, 'DIRECTORY_ENTRY_DEBUG'):
-			return
+		
 		for idx in xrange(len(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY)):
 			if self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].name == "IMAGE_DIRECTORY_ENTRY_IAT":
 				data=self._pe.get_data(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].VirtualAddress,self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].Size)
@@ -106,8 +165,8 @@ class ripPE(object):
 					write_iat=open("ripPE-" + self._md5 + "-" + struct_md5 + "-iat.iat","wb+")
 					write_iat.write(data)
 					write_iat.close()
-				print "%s,%s,iat_md5,IMAGE_DIRECTORY_ENTRY_IAT,%s" % (self._filename,self._md5,struct_md5)
-				print "%s,%s,iat_ssdeep,IMAGE_DIRECTORY_ENTRY_IAT,%s" % (self._filename,self._md5,struct_ssdeep)
+				self.output_handle("%s,%s,iat_md5,IMAGE_DIRECTORY_ENTRY_IAT,%s" % (self._filename,self._md5,struct_md5))
+				self.output_handle("%s,%s,iat_ssdeep,IMAGE_DIRECTORY_ENTRY_IAT,%s" % (self._filename,self._md5,struct_ssdeep))
 
 	def list_imports(self):
 		#::Bound Imports::#
@@ -116,16 +175,16 @@ class ripPE(object):
 			for entry in self._pe.DIRECTORY_ENTRY_BOUND_IMPORT:
 				for imports in entry.entries:
 					if (imports.name != None) and (imports.name != ""):
-						print "%s,%s,import_symbol,DIRECTORY_ENTRY_IMPORT_BOUND,%s" % (self._filename,self._md5,imports.name)
+						self.output_handle("%s,%s,import_symbol,DIRECTORY_ENTRY_IMPORT_BOUND,%s" % (self._filename,self._md5,imports.name))
 
 		#::Delayed Imports::#
 		if hasattr(self._pe, 'DIRECTORY_ENTRY_DELAY_IMPORT'):
 			for module in self._pe.DIRECTORY_ENTRY_DELAY_IMPORT:
 				for symbol in module.imports:
 					if symbol.import_by_ordinal is True:
-						print "%s,%s,import_symbol_ord,DIRECTORY_ENTRY_DELAY_IMPORT,%s-%s" % (self._filename,self._md5,module.dll,symbol.ordinal)
+						self.output_handle("%s,%s,import_symbol_ord,DIRECTORY_ENTRY_DELAY_IMPORT,%s-%s" % (self._filename,self._md5,module.dll,symbol.ordinal))
 					else:
-						print "%s,%s,import_symbol_ord,DIRECTORY_ENTRY_DELAY_IMPORT,%s-%s-%s" % (self._filename,self._md5,module.dll,symbol.name,str(symbol.hint))
+						self.output_handle("%s,%s,import_symbol_ord,DIRECTORY_ENTRY_DELAY_IMPORT,%s-%s-%s" % (self._filename,self._md5,module.dll,symbol.name,str(symbol.hint)))
 		
 		#::Dynamic Imports::#
 		if hasattr(self._pe, 'DIRECTORY_ENTRY_IMPORT'):
@@ -137,7 +196,7 @@ class ripPE(object):
 				for entry in self._pe.DIRECTORY_ENTRY_IMPORT:
 					for imp in entry.imports:
 						if (imp.name != None) and (imp.name != ""):
-							print "%s,%s,import_symbol,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,entry.dll + "." + imp.name)
+							self.output_handle("%s,%s,import_symbol,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,entry.dll + "." + imp.name))
 							import_list.append(str(entry.dll + "." + imp.name).upper())
 							import_list_raw.append(entry.dll + "." + imp.name)
 			import_list.sort()
@@ -149,11 +208,11 @@ class ripPE(object):
 			for impo in import_list_raw:
 				resultingImportsRaw+=impo + "\n"
 
-			print "%s,%s,import_names_md5,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,hashlib.md5(resultingImports).hexdigest())
-			print "%s,%s,import_names_ssdeep,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,ssdeep.hash(resultingImports))
+			self.output_handle("%s,%s,import_names_md5,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,hashlib.md5(resultingImports).hexdigest()))
+			self.output_handle("%s,%s,import_names_ssdeep,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,ssdeep.hash(resultingImports)))
 	
-			print "%s,%s,import_names_raw_md5,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,hashlib.md5(resultingImportsRaw).hexdigest())
-			print "%s,%s,import_names_raw_ssdeep,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,ssdeep.hash(resultingImportsRaw))
+			self.output_handle("%s,%s,import_names_raw_md5,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,hashlib.md5(resultingImportsRaw).hexdigest()))
+			self.output_handle("%s,%s,import_names_raw_ssdeep,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,ssdeep.hash(resultingImportsRaw)))
 		
 	def list_exports(self):
 		if not hasattr(self._pe, 'DIRECTORY_ENTRY_EXPORT'):
@@ -163,7 +222,7 @@ class ripPE(object):
 			if exports_total > 0:
 				for entry in self._pe.DIRECTORY_ENTRY_EXPORT.symbols:
 					if (entry.name != None) and (entry.name != ""):
-						print "%s,%s,export_symbol,DIRECTORY_ENTRY_EXPORT,%s" % (self._filename,self._md5,entry.name)
+						self.output_handle("%s,%s,export_symbol,DIRECTORY_ENTRY_EXPORT,%s" % (self._filename,self._md5,entry.name))
 		
 	def get_virtual_section_info(self):
 		for section in self._pe.sections:
@@ -175,8 +234,8 @@ class ripPE(object):
 				section_write=open("ripPE-" + self._md5 + "-" + name + ".section","wb+")
 				section_write.write(data)
 				section_write.close()
-			print "%s,%s,section_md5,%s,%s" % (self._filename,self._md5,name,data_md5)
-			print "%s,%s,section_ssdeep,%s,%s" % (self._filename,self._md5,name,data_ssdeep)
+			self.output_handle("%s,%s,section_md5,%s,%s" % (self._filename,self._md5,name,data_md5))
+			self.output_handle("%s,%s,section_ssdeep,%s,%s" % (self._filename,self._md5,name,data_ssdeep))
 
 	def get_debug(self):
 		if not hasattr(self._pe, 'DIRECTORY_ENTRY_DEBUG'):
@@ -193,8 +252,8 @@ class ripPE(object):
 							section_object=open("ripPE-" + name + ".dir","wb+")
 							section_object.write(data)
 							section_object.close()
-						print "%s,%s,debug_hash,DIRECTORY_ENTRY_DEBUG,%s" % (self._filename,self._md5,data_md5)
-						print "%s,%s,debug_ssdeep,DIRECTORY_ENTRY_DEBUG,%s" % (self._filename,self._md5,data_ssdeep)
+						self.output_handle("%s,%s,debug_hash,DIRECTORY_ENTRY_DEBUG,%s" % (self._filename,self._md5,data_md5))
+						self.output_handle("%s,%s,debug_ssdeep,DIRECTORY_ENTRY_DEBUG,%s" % (self._filename,self._md5,data_ssdeep))
 
 	def get_resource_info(self):
 		if hasattr(self._pe, 'DIRECTORY_ENTRY_RESOURCE'):
@@ -218,8 +277,8 @@ class ripPE(object):
 									resource_dump=open("ripPE-" + self._md5 + "-" + name + "-" + resource_md5 + ".rsrc","wb+")
 									resource_dump.write(data)
 									resource_dump.close()
-								print "%s,%s,resource_md5,RESOURCE-%s,%s" % (self._filename,self._md5,name,resource_md5)
-								print "%s,%s,resource_ssdeep,RESOURCE-%s,%s" % (self._filename,self._md5,name,resource_ssdeep)
+								self.output_handle("%s,%s,resource_md5,RESOURCE-%s,%s" % (self._filename,self._md5,name,resource_md5))
+								self.output_handle("%s,%s,resource_ssdeep,RESOURCE-%s,%s" % (self._filename,self._md5,name,resource_ssdeep))
 	
 	def dump_cert(self):
 		for idx in xrange(len(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY)):
@@ -234,18 +293,20 @@ class ripPE(object):
 					hash_dump=open("ripPE-CERT-" + cert_md5 + ".crt","wb+")
 					hash_dump.write(signature)
 					hash_dump.close()
-				print "%s,%s,certificate_md5,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,self._md5,cert_md5)
-				print "%s,%s,certificate_ssdeep,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,self._md5,cert_ssdeep)
+				self.output_handle("%s,%s,certificate_md5,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,self._md5,cert_md5))
+				self.output_handle("%s,%s,certificate_ssdeep,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,self._md5,cert_ssdeep))
 
 def main():
 
 	p = ArgumentParser(description='ripPE.py - script used to rip raw structures from a PE file and list relevant characteristics.',usage='ripPE.py --file=[file] --dump')
 	p.add_argument('--file',action='store',dest='ripFile',help='File to Parse',required=True)
 	p.add_argument('--section',action='store',dest='ripSection',choices=['all','dos','header','iat','imports','exports','debug','sections','resources','dump_cert'],default='all',help='Section to rip!',required=False)
-	p.add_argument('--dump',action='store_true',default=False,dest='dump_mode',help='Dump raw data to file - when not provided only metadata printed to stdout',required=False)							
+	p.add_argument('--dump',action='store_true',default=False,dest='dump_mode',help='Dump raw data to file - when not provided only metadata printed to stdout',required=False)
+	p.add_argument('--into-db',action='store_true',default=False,dest='into_db',help='Insert metadata into ripPE database',required=False)
+	p.add_argument('--session',action='store',default=False,dest='session_name',help='Session Identifier - stored in DB',required=False)
 	args = p.parse_args(sys.argv[1:])	
 	
-	pe=ripPE(args.ripFile,args.dump_mode)
+	pe=ripPE(args.ripFile,args.dump_mode,args.into_db,args.session_name)
 
 	if args.ripSection.upper() == "ALL":
 		pe.run_all()
