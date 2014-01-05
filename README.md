@@ -4,10 +4,10 @@ ripPE
 **ripPE.py** helps you get at the data you want ("rip") from a Portable Exectuable (PE). ripPE focuses on extracting common sections and properties of PE files for analysis. Usage of this tool can help extract resources via the command line for quick triage, hash pertinent sections for grouping of similar files, and extract sections for developing more nuanced malware signatures (i.e. via YARA).
 
 ### Communicating ripPE to your friends/colleagues:
-[ X ] - Hey friend, you should totally rip those resources out of that malware.
-[ X ] - I'm going rip the heck out of this PE file.
-[ X ] - The only thing I'm going to be ripping after eating this bean burrito are optional headers from this PE file.
-[ X ] - I could export/extract those sections from this file but, I'd rather rip them out.
+ * Hey friend, you should totally rip those resources out of that malware.
+ * I'm going rip the heck out of this PE file.
+ * The only thing I'm going to be ripping after eating this bean burrito are optional headers from this PE file.
+ * I could export/extract those sections from this file but, I'd rather rip them out.
 
 ***Requires***
  * pefile
