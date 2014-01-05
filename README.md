@@ -6,3 +6,5 @@ ripPE
 ***Requires***
  * pefile
  * ssdeep
+
+*boom*
