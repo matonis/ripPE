@@ -48,7 +48,7 @@ python ripPE.py --file=reallybadmalware.exe --dump --into-db
 for malware in $(ls /lotsofmalwaretobehadhere/ );do python ripPE.py --file=$malware --into-db;done
 ```
 
-### SQLite3 you say?
+### sqlite3 you say?
 Yes, I've joined the dark side. The serene beauty of the MySQL dolphin has been traded off for the lean, mean, fighting machine (possibly gluten-free with quinoa (or kale) sprinkled on top) sqlite3 database....may god have mercy on my soul. 
 
 No worries for now. The tradeoff was for ultimate portability - meant to be as portable as the road warrior; the lone soul incident responder/malware researcher who needs to rip stuff out of a file and possibly find releated stuff in the same pile of unknowns....15 minutes ago.
