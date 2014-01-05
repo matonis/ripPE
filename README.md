@@ -9,7 +9,7 @@ ripPE
  * The only thing I'm going to be ripping after eating this bean burrito are optional headers from this PE file.
  * I could export/extract those sections from this file but, I'd rather rip them out.
 
-***Requires***
+### Requires
  * pefile
  * ssdeep
  * sqlite3
