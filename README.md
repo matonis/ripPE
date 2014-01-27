@@ -16,7 +16,7 @@ ripPE
 
 ### Help:
 ```
-usage: ripPE.py --file=[file] --dump
+usage: ripPE.py --file=[file] --section=[all/other] --dump (optional) --into-db (optional) --session="testing"
 
 ripPE.py - script used to rip raw structures from a PE file and list relevant
 characteristics.
