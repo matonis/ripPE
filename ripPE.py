@@ -330,5 +330,9 @@ def main():
 	else:
 		print "Something bad happened..."
 
+	#::Close DB::#
+	if args.into_db == True:
+		pe.db_close()
+
 if __name__ == '__main__':
 	main()
