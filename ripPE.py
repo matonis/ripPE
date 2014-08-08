@@ -5,7 +5,6 @@ import pefile
 import binascii
 import hashlib
 import argparse
-import ssdeep
 import textwrap
 import time
 import sqlite3
@@ -14,12 +13,28 @@ from argparse import ArgumentParser
 
 class ripPE(object):
 
-	def __init__(self,file_to_rip,dump_mode=False,into_db=False,session=False):
+	def __init__(self,file_to_rip,dump_mode=False,into_db=False,session=False,hash_mode=False,ssdeep_it=False):
 		
 		self._date = time.time()
-		self._md5 = hashlib.md5(open(file_to_rip).read()).hexdigest()
+		self._hash_mode=hash_mode
+		self._md5=""
+		if self._hash_mode == "md5":
+			self._md5 = hashlib.md5(open(file_to_rip).read()).hexdigest()
+		elif self._hash_mode == "sha1":
+			self._md5 = hashlib.sha1(open(file_to_rip).read()).hexdigest()
+		elif self._hash_mode == "sha256":
+			self._md5 = hashlib.sha256(open(file_to_rip).read()).hexdigest()
 		self._dump_mode = dump_mode
 		self._filename = os.path.basename(file_to_rip)
+		self._ssd=ssdeep_it
+		self._oep=None
+
+		if self._ssd:
+			try:
+				exec "import ssdeep" in globals()
+			except:
+				print "Python ssdeep package not found... exiting"
+				sys.exit(0)
 		
 		if session == False:
 			self._session="ripPE-" + str(self._date)
@@ -31,10 +46,15 @@ class ripPE(object):
 		except:
 			print "%s,%s,FAIL,FAIL,FAIL" % (self._filename,self._md5)
 			sys.exit(0)
+
+		self._imphash=self._pe.get_imphash()
 	
 		#::Begin static stuff::#
 		self._pe_compile = self._pe.FILE_HEADER.TimeDateStamp
-		self._ssdeep = ssdeep.hash_from_file(file_to_rip)
+		self._oep=self._pe.OPTIONAL_HEADER.AddressOfEntryPoint
+		self._ssdeep=None
+		if self._ssd:
+			self._ssdeep = ssdeep.hash_from_file(file_to_rip)
 		self._into_db = into_db
 		self._dbcon = False
 		self._query = False
@@ -96,8 +116,11 @@ class ripPE(object):
 	def list_standard(self):
 
 		self.output_handle("%s,%s,file_md5,file_md5,%s" % (self._filename,self._md5,self._md5))
-		self.output_handle("%s,%s,file_ssdeep,file_header,%s" % (self._filename,self._md5,self._ssdeep))
+
+		if self._ssd:
+			self.output_handle("%s,%s,file_ssdeep,file_header,%s" % (self._filename,self._md5,self._ssdeep))
 		self.output_handle("%s,%s,timedatestamp,file_header,%s" % (self._filename,self._md5,self._pe_compile))
+		self.output_handle("%s,%s,entry_point,file_header,%s" % (self._filename,self._md5,self._oep))
 	
 		version_cat = []
 		version_value = []
@@ -123,12 +146,35 @@ class ripPE(object):
 			version_value_str = "\n".join(version_list[1])
 			version_both_str = "\n".join(version_list[2])
 		
-			self.output_handle("%s,%s,version_category_md5,file_header_category,%s" % (self._filename,self._md5,hashlib.md5(version_cat_str.encode('utf-8').strip()).hexdigest()))
-			self.output_handle("%s,%s,version_category_ssdeep,file_header_category,%s" % (self._filename,self._md5,ssdeep.hash(version_cat_str.encode('utf-8').strip())))
-			self.output_handle("%s,%s,version_value_md5,file_header_value,%s" % (self._filename,self._md5,hashlib.md5(version_value_str.encode('utf-8').strip()).hexdigest()))
-			self.output_handle("%s,%s,version_category_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_value_str.encode('utf-8').strip())))
-			self.output_handle("%s,%s,version_version_md5,file_header_version,%s" % (self._filename,self._md5,hashlib.md5(version_both_str.encode('utf-8').strip()).hexdigest()))
-			self.output_handle("%s,%s,version_version_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_both_str.encode('utf-8').strip())))
+			if self._hash_mode == "md5":
+				self.output_handle("%s,%s,version_category_md5,file_header_category,%s" % (self._filename,self._md5,hashlib.md5(version_cat_str.encode('utf-8').strip()).hexdigest()))
+			elif self._hash_mode == "sha1":
+				self.output_handle("%s,%s,version_category_md5,file_header_category,%s" % (self._filename,self._md5,hashlib.sha1(version_cat_str.encode('utf-8').strip()).hexdigest()))
+			elif self._hash_mode == "sha256":
+				self.output_handle("%s,%s,version_category_md5,file_header_category,%s" % (self._filename,self._md5,hashlib.sha256(version_cat_str.encode('utf-8').strip()).hexdigest()))
+
+			if self._ssd:
+				self.output_handle("%s,%s,version_category_ssdeep,file_header_category,%s" % (self._filename,self._md5,ssdeep.hash(version_cat_str.encode('utf-8').strip())))
+
+			if self._hash_mode == "md5":
+				self.output_handle("%s,%s,version_value_md5,file_header_value,%s" % (self._filename,self._md5,hashlib.md5(version_value_str.encode('utf-8').strip()).hexdigest()))
+			elif self._hash_mode == "sha1":
+				self.output_handle("%s,%s,version_value_md5,file_header_value,%s" % (self._filename,self._md5,hashlib.sha1(version_value_str.encode('utf-8').strip()).hexdigest()))
+			elif self._hash_mode == "sha256":
+				self.output_handle("%s,%s,version_value_md5,file_header_value,%s" % (self._filename,self._md5,hashlib.sha256(version_value_str.encode('utf-8').strip()).hexdigest()))
+
+			if self._ssd:
+				self.output_handle("%s,%s,version_category_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_value_str.encode('utf-8').strip())))
+
+			if self._hash_mode == "md5":
+				self.output_handle("%s,%s,version_version_md5,file_header_version,%s" % (self._filename,self._md5,hashlib.md5(version_both_str.encode('utf-8').strip()).hexdigest()))
+			elif self._hash_mode == "sha1":
+				self.output_handle("%s,%s,version_version_md5,file_header_version,%s" % (self._filename,self._md5,hashlib.sha1(version_both_str.encode('utf-8').strip()).hexdigest()))
+			elif self._hash_mode == "sha256":
+				self.output_handle("%s,%s,version_version_md5,file_header_version,%s" % (self._filename,self._md5,hashlib.sha256(version_both_str.encode('utf-8').strip()).hexdigest()))
+
+			if self._ssd:
+				self.output_handle("%s,%s,version_version_ssdeep,file_header_value,%s" % (self._filename,self._md5,ssdeep.hash(version_both_str.encode('utf-8').strip())))
 
 	#def dump_dos(self):
 	#	#::TODO: LIST OUT DOS HEADER PARAMETERS + IMAGE TYPE::#
@@ -143,28 +189,48 @@ class ripPE(object):
 		for idx in xrange(len(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY)):
 			if self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].name == "IMAGE_DIRECTORY_ENTRY_IMPORT":
 				data=self._pe.get_data(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].VirtualAddress,self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].Size)
-				struct_md5=hashlib.md5(data).hexdigest()
-				struct_ssdeep=ssdeep.hash(data)
+
+				if self._hash_mode == "md5":
+					struct_md5=hashlib.md5(data).hexdigest()
+				elif self._hash_mode == "sha1":
+					struct_md5=hashlib.sha1(data).hexdigest()
+				elif self._hash_mode == "sha256":
+					struct_md5=hashlib.sha256(data).hexdigest()
+
+
+				struct_ssdeep="NoMode"
+				if self._ssd:
+					struct_ssdeep=ssdeep.hash(data)
 				if self._dump_mode == True:
 					write_iat=open("ripPE-IMPORT-" + self._md5 + "-" + struct_md5 + ".import","wb+")
 					write_iat.write(data)
 					write_iat.close()
-				self.output_handle("%s,%s,import_md5,IMAGE_DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,struct_md5))
-				self.output_handle("%s,%s,import_ssdeep,IMAGE_DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,struct_ssdeep))
+
+				if self._ssd:
+					self.output_handle("%s,%s,import_ssdeep,IMAGE_DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,struct_ssdeep))
 	
 	def dump_iat(self):
 		
 		for idx in xrange(len(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY)):
 			if self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].name == "IMAGE_DIRECTORY_ENTRY_IAT":
 				data=self._pe.get_data(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].VirtualAddress,self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].Size)
-				struct_md5=hashlib.md5(data).hexdigest()
-				struct_ssdeep=ssdeep.hash(data)
+				if self._hash_mode == "md5":
+					struct_md5=hashlib.md5(data).hexdigest()
+				elif self._hash_mode == "sha1":
+					struct_md5=hashlib.sha1(data).hexdigest()
+				elif self._hash_mode == "sha256":
+					struct_md5=hashlib.sha256(data).hexdigest()
+
+				struct_ssdeep="NoMode"
+				if self._ssd:
+					struct_ssdeep=ssdeep.hash(data)
 				if self._dump_mode == True:
 					write_iat=open("ripPE-IAT-" + self._md5 + "-" + struct_md5 + ".iat","wb+")
 					write_iat.write(data)
 					write_iat.close()
 				self.output_handle("%s,%s,iat_md5,IMAGE_DIRECTORY_ENTRY_IAT,%s" % (self._filename,self._md5,struct_md5))
-				self.output_handle("%s,%s,iat_ssdeep,IMAGE_DIRECTORY_ENTRY_IAT,%s" % (self._filename,self._md5,struct_ssdeep))
+				if self._ssd:
+					self.output_handle("%s,%s,iat_ssdeep,IMAGE_DIRECTORY_ENTRY_IAT,%s" % (self._filename,self._md5,struct_ssdeep))
 
 	def list_imports(self):
 		#::Bound Imports::#
@@ -208,11 +274,8 @@ class ripPE(object):
 			for impo in import_list_raw:
 				resultingImportsRaw+=impo + "\n"
 
-			self.output_handle("%s,%s,import_names_md5,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,hashlib.md5(resultingImports).hexdigest()))
-			self.output_handle("%s,%s,import_names_ssdeep,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,ssdeep.hash(resultingImports)))
-	
-			self.output_handle("%s,%s,import_names_raw_md5,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,hashlib.md5(resultingImportsRaw).hexdigest()))
-			self.output_handle("%s,%s,import_names_raw_ssdeep,DIRECTORY_ENTRY_IMPORT,%s" % (self._filename,self._md5,ssdeep.hash(resultingImportsRaw)))
+			self.output_handle("%s,%s,imphash,IMPORT_HASH,%s" % (self._filename,self._md5,self._imphash))
+
 		
 	def list_exports(self):
 		if not hasattr(self._pe, 'DIRECTORY_ENTRY_EXPORT'):
@@ -228,14 +291,27 @@ class ripPE(object):
 		for section in self._pe.sections:
 			name=str(section.Name.rstrip('\0'))
 			data=self._pe.get_data(section.VirtualAddress,section.SizeOfRawData)
-			data_md5 = section.get_hash_md5()
-			data_ssdeep = ssdeep.hash(data)
+			data_md5="hash2be"
+
+			if self._hash_mode == "md5":
+				data_md5=hashlib.md5(data).hexdigest()
+			elif self._hash_mode == "sha1":
+				data_md5=hashlib.sha1(data).hexdigest()
+			elif self._hash_mode == "sha256":
+				data_md5=hashlib.sha256(data).hexdigest()
+
+			data_ssdeep="NoMode"
+			if self._ssd:
+				data_ssdeep = ssdeep.hash(data)
 			if self._dump_mode == True:
 				section_write=open("ripPE-SECTION-" + self._md5 + "-" + data_md5 + name,"wb+")
 				section_write.write(data)
 				section_write.close()
-			self.output_handle("%s,%s,section_md5,%s,%s" % (self._filename,self._md5,name,data_md5))
-			self.output_handle("%s,%s,section_ssdeep,%s,%s" % (self._filename,self._md5,name,data_ssdeep))
+
+			self.output_handle("%s,%s,section_hash,%s,%s" % (self._filename,self._md5,name,data_md5))
+
+			if self._ssd:
+				self.output_handle("%s,%s,section_ssdeep,%s,%s" % (self._filename,self._md5,name,data_ssdeep))
 
 	def get_debug(self):
 		if not hasattr(self._pe, 'DIRECTORY_ENTRY_DEBUG'):
@@ -246,14 +322,25 @@ class ripPE(object):
 					name=self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].name
 					for dbg in self._pe.DIRECTORY_ENTRY_DEBUG:
 						data=self._pe.get_data(dbg.struct.AddressOfRawData,dbg.struct.SizeOfData)
-						data_md5=hashlib.md5(data).hexdigest()
-						data_ssdeep=ssdeep.hash(data)
+						data_md5="hash2be"
+
+						if self._hash_mode == "md5":
+							data_md5=hashlib.md5(data).hexdigest()
+						elif self._hash_mode == "sha1":
+							data_md5=hashlib.sha1(data).hexdigest()
+						elif self._hash_mode == "sha256":
+							data_md5=hashlib.sha256(data).hexdigest()
+
+						data_ssdeep="NoMode"
+						if self._ssd:
+							data_ssdeep=ssdeep.hash(data)
 						if self._dump_mode == True:
 							section_object=open("ripPE-DEBUG-" + self._md5 + "-" + data_md5 + ".debug","wb+")
 							section_object.write(data)
 							section_object.close()
 						self.output_handle("%s,%s,debug_hash,DIRECTORY_ENTRY_DEBUG,%s" % (self._filename,self._md5,data_md5))
-						self.output_handle("%s,%s,debug_ssdeep,DIRECTORY_ENTRY_DEBUG,%s" % (self._filename,self._md5,data_ssdeep))
+						if self._ssd:
+							self.output_handle("%s,%s,debug_ssdeep,DIRECTORY_ENTRY_DEBUG,%s" % (self._filename,self._md5,data_ssdeep))
 
 	def get_resource_info(self):
 		if hasattr(self._pe, 'DIRECTORY_ENTRY_RESOURCE'):
@@ -271,14 +358,24 @@ class ripPE(object):
 								data = self._pe.get_data(resource_lang.data.struct.OffsetToData, resource_lang.data.struct.Size)
 								lang = pefile.LANG.get(resource_lang.data.lang, '*unknown*')
 								sublang = pefile.get_sublang_name_for_lang( resource_lang.data.lang, resource_lang.data.sublang )
-								resource_md5 = hashlib.md5(data).hexdigest()
-								resource_ssdeep = ssdeep.hash(data)
+								resource_md5 = "hash2be"
+
+								if self._hash_mode == "md5":
+									resource_md5=hashlib.md5(data).hexdigest()
+								elif self._hash_mode == "sha1":
+									resource_md5=hashlib.sha1(data).hexdigest()
+								elif self._hash_mode == "sha256":
+									resource_md5=hashlib.sha256(data).hexdigest()
+
+								if self._ssd:
+									resource_ssdeep = ssdeep.hash(data)
 								if self._dump_mode == True:
 									resource_dump=open("ripPE-RESOURCE-" + self._md5 + "-" + name + "-" + resource_md5 + ".rsrc","wb+")
 									resource_dump.write(data)
 									resource_dump.close()
 								self.output_handle("%s,%s,resource_md5,RESOURCE-%s,%s" % (self._filename,self._md5,name,resource_md5))
-								self.output_handle("%s,%s,resource_ssdeep,RESOURCE-%s,%s" % (self._filename,self._md5,name,resource_ssdeep))
+								if self._ssd:
+									self.output_handle("%s,%s,resource_ssdeep,RESOURCE-%s,%s" % (self._filename,self._md5,name,resource_ssdeep))
 	
 	def dump_cert(self):
 		for idx in xrange(len(self._pe.OPTIONAL_HEADER.DATA_DIRECTORY)):
@@ -287,14 +384,24 @@ class ripPE(object):
 					return
 				address=self._pe.OPTIONAL_HEADER.DATA_DIRECTORY[idx].VirtualAddress
 				signature=self._pe.write()[address+8:] #::Thanks Didier Stevens!!
-				cert_md5=hashlib.md5(signature).hexdigest()
-				cert_ssdeep=ssdeep.hash(signature)
+				cert_md5="hash2be"
+				if self._hash_mode == "md5":
+					cert_md5=hashlib.md5(signature).hexdigest()
+				elif self._hash_mode == "sha1":
+					cert_md5=hashlib.sha1(signature).hexdigest()
+				elif self._hash_mode == "sha256":
+					cert_md5=hashlib.sha256(signature).hexdigest()
+
+				cert_ssdeep="NoMode"
+				if self._ssd:
+					cert_ssdeep=ssdeep.hash(signature)
 				if self._dump_mode == True:
 					hash_dump=open("ripPE-CERT-" + self._md5 + "-" + cert_md5 + ".crt","wb+")
 					hash_dump.write(signature)
 					hash_dump.close()
-				self.output_handle("%s,%s,certificate_md5,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,self._md5,cert_md5))
-				self.output_handle("%s,%s,certificate_ssdeep,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,self._md5,cert_ssdeep))
+				self.output_handle("%s,%s,certificate_hash,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,self._md5,cert_md5))
+				if self._ssd:
+					self.output_handle("%s,%s,certificate_ssdeep,DIRECTORY_ENTRY_SECURITY,%s" % (self._filename,self._md5,cert_ssdeep))
 
 def main():
 
@@ -304,9 +411,14 @@ def main():
 	p.add_argument('--dump',action='store_true',default=False,dest='dump_mode',help='Dump raw data to file - when not provided only metadata printed to stdout',required=False)
 	p.add_argument('--into-db',action='store_true',default=False,dest='into_db',help='Insert metadata into ripPE database',required=False)
 	p.add_argument('--session',action='store',default=False,dest='session_name',help='Session Identifier - stored in DB',required=False)
+	p.add_argument('--hash_mode',action='store',dest='hashMode',choices=['md5','sha1','sha256'],help='Checksum method section hashing. (Default sha256)',default='sha256',required=False)
+	p.add_argument('--ssdeep',action='store_true',default=False,dest='ssdeep_it',help='Print ssdeep value for sections/resources',required=False)
 	args = p.parse_args(sys.argv[1:])	
 	
-	pe=ripPE(args.ripFile,args.dump_mode,args.into_db,args.session_name)
+	pe=ripPE(args.ripFile,args.dump_mode,args.into_db,args.session_name,args.hashMode,args.ssdeep_it)
+
+	if args.ssdeep_it:
+		import ssdeep
 
 	if args.ripSection.upper() == "ALL":
 		pe.run_all()
